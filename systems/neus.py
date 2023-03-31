@@ -45,7 +45,13 @@ class NeuSSystem(BaseSystem):
             y = torch.randint(
                 0, self.dataset.h, size=(self.train_num_rays,), device=self.dataset.all_images.device
             )
-            directions = self.dataset.directions[y, x]
+
+            #if dataset name is evdata, then we have different direction vectors for each image
+            if self.dataset.config.name == 'evdata':
+                directions = self.dataset.all_directions[index, y, x]
+            else:
+                directions = self.dataset.directions[y, x]
+            
             rays_o, rays_d = get_rays(directions, c2w)
             rgb = self.dataset.all_images[index, y, x].view(-1, self.dataset.all_images.shape[-1])
             fg_mask = self.dataset.all_fg_masks[index, y, x].view(-1)
