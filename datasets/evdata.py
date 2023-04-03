@@ -52,10 +52,14 @@ class EVDatasetBase():
         # ray directions for all pixels, same for all images (same H, W, focal)
         # self.directions = get_ray_directions(self.w, self.h, self.focal, self.focal, self.w//2, self.h//2, self.config.use_pixel_centers).to(self.rank) # (h, w, 3)           
 
-        self.all_c2w, self.all_images, self.all_fg_masks, self.all_directions = [], [], [], []
+        self.scene_scale_factor = meta["aabb"][1][0] #we use xmax in aabb to downscale scene to unit cube [-1,1] 
 
+        self.all_c2w, self.all_images, self.all_fg_masks, self.all_directions = [], [], [], []
+        
         for i, frame in enumerate(meta['frames']):
             c2w = torch.from_numpy(np.array(frame['transform_matrix'])[:3, :4])
+            c2w[0:3,3] /= self.scene_scale_factor # scale to unit cube
+            
             self.all_c2w.append(c2w)
 
             img_path = os.path.join(self.config.root_dir, frame['file_path'][2:])

@@ -56,8 +56,13 @@ class NeuSSystem(BaseSystem):
             rgb = self.dataset.all_images[index, y, x].view(-1, self.dataset.all_images.shape[-1])
             fg_mask = self.dataset.all_fg_masks[index, y, x].view(-1)
         else:
+
+            if self.dataset.config.name == 'evdata':
+                directions = self.dataset.all_directions[index][0]
+            else:
+                directions = self.dataset.directions
+
             c2w = self.dataset.all_c2w[index][0]
-            directions = self.dataset.directions
             rays_o, rays_d = get_rays(directions, c2w)
             rgb = self.dataset.all_images[index].view(-1, self.dataset.all_images.shape[-1])
             fg_mask = self.dataset.all_fg_masks[index].view(-1)
@@ -214,17 +219,27 @@ class NeuSSystem(BaseSystem):
             psnr = torch.mean(torch.stack([o['psnr'] for o in out_set.values()]))
             self.log('test/psnr', psnr, prog_bar=True, rank_zero_only=True)    
 
-            self.save_img_sequence(
-                f"it{self.global_step}-test",
-                f"it{self.global_step}-test",
-                '(\d+)\.png',
-                save_format='mp4',
-                fps=30
-            )
+            # No need for a video output
+            # self.save_img_sequence(
+            #     f"it{self.global_step}-test",
+            #     f"it{self.global_step}-test",
+            #     '(\d+)\.png',
+            #     save_format='mp4',
+            #     fps=30
+            # )
             
+            #Create mesh
             mesh = self.model.isosurface()
+
+            #We want to scale the scene back to original ENU coordinates
+            mesh['v_pos'] = mesh['v_pos'] * self.dataset.scene_scale_factor
+            
+            # import trimesh
+            # mesh = trimesh.Trimesh(mesh['v_pos'], mesh['v_pos'])
+            # mesh.export('mesh.ply')
+
             self.save_mesh(
-                f"it{self.global_step}-{self.config.model.geometry.isosurface.method}{self.config.model.geometry.isosurface.resolution}.obj",
+                f"it{self.global_step}-{self.config.model.geometry.isosurface.method}{self.config.model.geometry.isosurface.resolution}.ply",
                 mesh['v_pos'],
                 mesh['t_pos_idx'],
             )

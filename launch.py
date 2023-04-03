@@ -112,7 +112,7 @@ def main():
             trainer.fit(system, datamodule=dm, ckpt_path=args.resume)
         else:
             trainer.fit(system, datamodule=dm)
-        # trainer.test(system, datamodule=dm)
+        trainer.test(system, datamodule=dm)
     elif args.validate:
         trainer.validate(system, datamodule=dm, ckpt_path=args.resume)
     elif args.test:

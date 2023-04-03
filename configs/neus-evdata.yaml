@@ -11,7 +11,7 @@ dataset:
     - 800
   # img_downscale: 1 # specify training image size by either img_wh or img_downscale
   near_plane: 2.0
-  far_plane: 6.0
+  far_plane: 4.0
   spheric_poses: false
   use_pixel_centers: true
   train_split: 'train'
@@ -43,7 +43,7 @@ model:
     grad_type: analytic
     isosurface:
       method: mc
-      resolution: 512
+      resolution: 128
       chunk: 2097152
       threshold: 0.
     xyz_encoding_config:
