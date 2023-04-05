@@ -46,13 +46,21 @@ class NeuSModel(BaseModel):
         self.geometry = models.make(self.config.geometry.name, self.config.geometry)
         self.texture = models.make(self.config.texture.name, self.config.texture)
         self.variance = VarianceNetwork(self.config.variance)
-        self.register_buffer('scene_aabb', torch.as_tensor([-self.config.radius, -self.config.radius, -self.config.radius, self.config.radius, self.config.radius, self.config.radius], dtype=torch.float32))
+        
+        self.register_buffer('scene_aabb', torch.as_tensor([-self.config.radius, 
+                                                            -self.config.radius, 
+                                                            0, 
+                                                            self.config.radius, 
+                                                            self.config.radius, 
+                                                            self.config.radius/2], dtype=torch.float32))
+        
         if self.config.grid_prune:
             self.occupancy_grid = OccupancyGrid(
                 roi_aabb=self.scene_aabb,
-                resolution=128,
+                resolution=[self.config.grid_res_x, self.config.grid_res_y, self.config.grid_res_z],
                 contraction_type=ContractionType.AABB
             )
+        
         self.randomized = self.config.randomized
         self.background_color = None
         self.render_step_size = 1.732 * 2 * self.config.radius / self.config.num_samples_per_ray

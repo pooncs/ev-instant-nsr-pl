@@ -185,6 +185,16 @@ class NeuSSystem(BaseSystem):
             psnr = torch.mean(torch.stack([o['psnr'] for o in out_set.values()]))
             self.log('val/psnr', psnr, prog_bar=True, rank_zero_only=True)         
 
+            # #Create mesh
+            # mesh = self.model.isosurface()        
+            # mesh['v_pos'] = mesh['v_pos'] * self.dataset.scene_scale_factor #We want to scale the scene back to original ENU coordinates
+            # self.save_mesh(
+            #     f"it{self.global_step}-{self.config.model.geometry.isosurface.method}{self.config.model.geometry.isosurface.resolution}.ply",
+            #     mesh['v_pos'],
+            #     mesh['t_pos_idx'],
+            # )
+
+
     def test_step(self, batch, batch_idx):
         out = self(batch)
         psnr = self.criterions['psnr'](out['comp_rgb'], batch['rgb'])

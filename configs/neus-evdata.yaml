@@ -1,6 +1,6 @@
 name: neus-evdata-${dataset.scene}
 tag: ''
-seed: 42
+seed: 5
 
 dataset:
   name: evdata
@@ -20,11 +20,14 @@ dataset:
 
 model:
   name: neus
-  radius: 1.5
+  radius: 1
   num_samples_per_ray: 1024
   train_num_rays: 256
   max_train_num_rays: 8192
   grid_prune: true
+  grid_res_x: 240
+  grid_res_y: 240
+  grid_res_z: 100
   grid_prune_occ_thre: 0.001
   dynamic_ray_sampling: true
   batch_image_sampling: true
@@ -43,7 +46,7 @@ model:
     grad_type: analytic
     isosurface:
       method: mc
-      resolution: 128
+      resolution: 256
       chunk: 2097152
       threshold: 0.
     xyz_encoding_config:
@@ -80,10 +83,10 @@ model:
 system:
   name: neus-system
   loss:
-    lambda_rgb_mse: 10.
-    lambda_rgb_l1: 1.
-    lambda_mask: 0.1
-    lambda_eikonal: 0.1
+    lambda_rgb_mse: 5.
+    lambda_rgb_l1: 20.
+    lambda_mask: 0.0
+    lambda_eikonal: 0.01
     lambda_sparsity: 0.01
     sparsity_scale: 1.
   optimizer:
