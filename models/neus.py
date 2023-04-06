@@ -52,7 +52,7 @@ class NeuSModel(BaseModel):
                                                             0, 
                                                             self.config.radius, 
                                                             self.config.radius, 
-                                                            self.config.radius/2], dtype=torch.float32))
+                                                            self.config.radius], dtype=torch.float32))
         
         if self.config.grid_prune:
             self.occupancy_grid = OccupancyGrid(

@@ -23,8 +23,8 @@ def main():
     group.add_argument('--test', action='store_true')
     group.add_argument('--predict', action='store_true')
 
-    parser.add_argument('--exp_dir', default='./exp')
-    parser.add_argument('--runs_dir', default='./runs')
+    parser.add_argument('--exp_dir', default='exp')
+    parser.add_argument('--runs_dir', default='runs')
     parser.add_argument('--verbose', action='store_true', help='if true, set logging level to DEBUG')
 
     args, extras = parser.parse_known_args()
@@ -48,13 +48,13 @@ def main():
     config.cmd_args = vars(args)
 
     print(config.tag)
-
+    root_data = '/home/ubuntu/src/data'
     config.trial_name = config.get('trial_name') or (config.tag + datetime.now().strftime('@%Y%m%d-%H%M%S'))
-    config.exp_dir = config.get('exp_dir') or os.path.join(args.exp_dir, config.name)
-    config.save_dir = config.get('save_dir') or os.path.join(config.exp_dir, config.trial_name, 'save')
-    config.ckpt_dir = config.get('ckpt_dir') or os.path.join(config.exp_dir, config.trial_name, 'ckpt')
-    config.code_dir = config.get('code_dir') or os.path.join(config.exp_dir, config.trial_name, 'code')
-    config.config_dir = config.get('config_dir') or os.path.join(config.exp_dir, config.trial_name, 'config')
+    config.exp_dir = os.path.join(root_data, config.dataset.scene, args.exp_dir)
+    config.save_dir = os.path.join(config.exp_dir, config.trial_name, 'save')
+    config.ckpt_dir = os.path.join(config.exp_dir, config.trial_name, 'ckpt')
+    config.code_dir = os.path.join(config.exp_dir, config.trial_name, 'code')
+    config.config_dir = os.path.join(config.exp_dir, config.trial_name, 'config')
 
     logger = logging.getLogger('pytorch_lightning')
     if args.verbose:
@@ -86,6 +86,7 @@ def main():
 
     loggers = []
     if args.train:
+        args.runs_dir = os.path.join(root_data, args.runs_dir)
         loggers += [
             TensorBoardLogger(args.runs_dir, name=config.name, version=config.trial_name),
             CSVLogger(config.exp_dir, name=config.trial_name, version='csv_logs')
