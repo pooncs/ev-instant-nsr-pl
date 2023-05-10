@@ -4,13 +4,13 @@ seed: 42
 
 dataset:
   name: colmap
-  scene: ???
-  root_dir: ./load/unbounded360/${dataset.scene}
+  root_dir: ./load/unbounded360/garden
   img_downscale: 4 # specify training image size by either img_wh or img_downscale
-  estimate_ground: true # if true, use estimated ground plane normal direction as up direction
-  use_mask: false # if true, crop out the foreground region; only effective when root_dir/masks folder exists    
-  use_pixel_centers: true
+  up_est_method: ground # if true, use estimated ground plane normal direction as up direction
+  center_est_method: lookat
   n_test_traj_steps: 120
+  apply_mask: false
+  load_data_on_gpu: false
 
 model:
   name: nerf
@@ -83,6 +83,10 @@ system:
 checkpoint:
   save_top_k: -1
   every_n_train_steps: ${trainer.max_steps}
+
+export:
+  chunk_size: 2097152
+  export_vertex_color: False  
 
 trainer:
   max_steps: 50000

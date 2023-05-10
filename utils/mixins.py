@@ -207,13 +207,10 @@ class SaverMixin():
             imgs = [cv2.cvtColor(i, cv2.COLOR_BGR2RGB) for i in imgs]
             imageio.mimsave(self.get_save_path(filename), imgs, fps=fps, palettesize=256)
         elif save_format == 'mp4':
-            H, W, _ = imgs[0].shape
-            writer = cv2.VideoWriter(self.get_save_path(filename), cv2.VideoWriter_fourcc(*'mp4v'), 30, (W, H), True)
-            for img in imgs:
-                writer.write(img)
-            writer.release()
+            imgs = [cv2.cvtColor(i, cv2.COLOR_BGR2RGB) for i in imgs]
+            imageio.mimsave(self.get_save_path(filename), imgs, fps=fps)
     
-    def save_mesh(self, filename, v_pos, t_pos_idx, v_tex=None, t_tex_idx=None):
+    def save_mesh(self, filename, v_pos, t_pos_idx, v_tex=None, t_tex_idx=None, v_rgb=None):
         v_pos, t_pos_idx = self.convert_data(v_pos), self.convert_data(t_pos_idx)
         
         # if v_tex is not None and t_tex_idx is not None:
@@ -225,7 +222,8 @@ class SaverMixin():
         # This will mess with the coordinates!
         mesh = trimesh.Trimesh(
             vertices=v_pos,
-            faces=t_pos_idx
+            faces=t_pos_idx,
+            vertex_colors=v_rgb
         )
         mesh.export(self.get_save_path(filename))
         

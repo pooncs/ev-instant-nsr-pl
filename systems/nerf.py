@@ -53,8 +53,8 @@ class NeRFSystem(BaseSystem):
             else:
                 directions = self.dataset.directions[y, x]
             rays_o, rays_d = get_rays(directions, c2w)
-            rgb = self.dataset.all_images[index, y, x].view(-1, self.dataset.all_images.shape[-1])
-            fg_mask = self.dataset.all_fg_masks[index, y, x].view(-1)
+            rgb = self.dataset.all_images[index, y, x].view(-1, self.dataset.all_images.shape[-1]).to(self.rank)
+            fg_mask = self.dataset.all_fg_masks[index, y, x].view(-1).to(self.rank)
         else:
 
             if self.dataset.config.name == 'evdata':
@@ -63,9 +63,13 @@ class NeRFSystem(BaseSystem):
                 directions = self.dataset.directions
 
             c2w = self.dataset.all_c2w[index][0]
+            if self.dataset.directions.ndim == 3: # (H, W, 3)
+                directions = self.dataset.directions
+            elif self.dataset.directions.ndim == 4: # (N, H, W, 3)
+                directions = self.dataset.directions[index][0]
             rays_o, rays_d = get_rays(directions, c2w)
-            rgb = self.dataset.all_images[index].view(-1, self.dataset.all_images.shape[-1])
-            fg_mask = self.dataset.all_fg_masks[index].view(-1)
+            rgb = self.dataset.all_images[index].view(-1, self.dataset.all_images.shape[-1]).to(self.rank)
+            fg_mask = self.dataset.all_fg_masks[index].view(-1).to(self.rank)
         
         rays = torch.cat([rays_o, F.normalize(rays_d, p=2, dim=-1)], dim=-1)
 
@@ -79,7 +83,8 @@ class NeRFSystem(BaseSystem):
         else:
             self.model.background_color = torch.ones((3,), dtype=torch.float32, device=self.rank)
         
-        rgb = rgb * fg_mask[...,None] + self.model.background_color * (1 - fg_mask[...,None])
+        if self.dataset.apply_mask:
+            rgb = rgb * fg_mask[...,None] + self.model.background_color * (1 - fg_mask[...,None])        
         
         batch.update({
             'rays': rays,
@@ -97,7 +102,7 @@ class NeRFSystem(BaseSystem):
             train_num_rays = int(self.train_num_rays * (self.train_num_samples / out['num_samples'].sum().item()))        
             self.train_num_rays = min(int(self.train_num_rays * 0.9 + train_num_rays * 0.1), self.config.model.max_train_num_rays)
         
-        loss_rgb = F.smooth_l1_loss(out['comp_rgb'][out['rays_valid']], batch['rgb'][out['rays_valid']])
+        loss_rgb = F.smooth_l1_loss(out['comp_rgb'][out['rays_valid'][...,0]], batch['rgb'][out['rays_valid'][...,0]])
         self.log('train/loss_rgb', loss_rgb)
         loss += loss_rgb * self.C(self.config.system.loss.lambda_rgb)
 
@@ -138,7 +143,7 @@ class NeRFSystem(BaseSystem):
     
     def validation_step(self, batch, batch_idx):
         out = self(batch)
-        psnr = self.criterions['psnr'](out['comp_rgb'], batch['rgb'])
+        psnr = self.criterions['psnr'](out['comp_rgb'].to(batch['rgb']), batch['rgb'])
         W, H = self.dataset.img_wh
         self.save_image_grid(f"it{self.global_step}-{batch['index'][0].item()}.png", [
             {'type': 'rgb', 'img': batch['rgb'].view(H, W, 3), 'kwargs': {'data_format': 'HWC'}},
@@ -175,7 +180,7 @@ class NeRFSystem(BaseSystem):
 
     def test_step(self, batch, batch_idx):  
         out = self(batch)
-        psnr = self.criterions['psnr'](out['comp_rgb'], batch['rgb'])
+        psnr = self.criterions['psnr'](out['comp_rgb'].to(batch['rgb']), batch['rgb'])
         W, H = self.dataset.img_wh
         self.save_image_grid(f"it{self.global_step}-test/{batch['index'][0].item()}.png", [
             {'type': 'rgb', 'img': batch['rgb'].view(H, W, 3), 'kwargs': {'data_format': 'HWC'}},

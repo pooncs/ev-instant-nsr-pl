@@ -26,11 +26,28 @@ def get_center(pts):
     center = pts[valid].mean(0)
     return center
 
+def normalize_poses(poses, pts, up_est_method, center_est_method):
+    if center_est_method == 'camera':
+        # estimation scene center as the average of all camera positions
+        center = poses[...,3].mean(0)
+    elif center_est_method == 'lookat':
+        # estimation scene center as the average of the intersection of selected pairs of camera rays
+        cams_ori = poses[...,3]
+        cams_dir = poses[:,:3,:3] @ torch.as_tensor([0.,0.,-1.])
+        cams_dir = F.normalize(cams_dir, dim=-1)
+        A = torch.stack([cams_dir, -cams_dir.roll(1,0)], dim=-1)
+        b = -cams_ori + cams_ori.roll(1,0)
+        t = torch.linalg.lstsq(A, b).solution
+        center = (torch.stack([cams_dir, cams_dir.roll(1,0)], dim=-1) * t[:,None,:] + torch.stack([cams_ori, cams_ori.roll(1,0)], dim=-1)).mean((0,2))
+    elif center_est_method == 'point':
+        # first estimation scene center as the average of all camera positions
+        # later we'll use the center of all points bounded by the cameras as the final scene center
+        center = poses[...,3].mean(0)
+    else:
+        raise NotImplementedError(f'Unknown center estimation method: {center_est_method}')
 
-def normalize_poses(poses, pts, estimate_ground=True):
-    center = get_center(pts)
-
-    if estimate_ground:
+    if up_est_method == 'ground':
+        # estimate up direction as the normal of the estimated ground plane
         # use RANSAC to estimate the ground plane in the point cloud
         import pyransac3d as pyrsc
         ground = pyrsc.Plane()
@@ -40,39 +57,57 @@ def normalize_poses(poses, pts, estimate_ground=True):
         signed_distance = (torch.cat([pts, torch.ones_like(pts[...,0:1])], dim=-1) * plane_eq).sum(-1)
         if signed_distance.mean() < 0:
             z = -z # flip the direction if points lie under the plane
-    else:
-        # use the average camera pose as the up direction
+    elif up_est_method == 'camera':
+        # estimate up direction as the average of all camera up directions
         z = F.normalize((poses[...,3] - center).mean(0), dim=0)
+    else:
+        raise NotImplementedError(f'Unknown up estimation method: {up_est_method}')
 
     # new axis
     y_ = torch.as_tensor([z[1], -z[0], 0.])
     x = F.normalize(y_.cross(z), dim=0)
     y = z.cross(x)
 
-    # rotation
-    Rc = torch.stack([x, y, z], dim=1)
-    R = Rc.T
-    poses_homo = torch.cat([poses, torch.as_tensor([[[0.,0.,0.,1.]]]).expand(poses.shape[0], -1, -1)], dim=1)
-    inv_trans = torch.cat([torch.cat([R, torch.as_tensor([[0.,0.,0.]]).T], dim=1), torch.as_tensor([[0.,0.,0.,1.]])], dim=0)
-    poses = (inv_trans @ poses_homo)[:,:3]
-    pts = (inv_trans @ torch.cat([pts, torch.ones_like(pts[:,0:1])], dim=-1)[...,None])[:,:3,0]
+    if center_est_method == 'point':
+        # rotation
+        Rc = torch.stack([x, y, z], dim=1)
+        R = Rc.T
+        poses_homo = torch.cat([poses, torch.as_tensor([[[0.,0.,0.,1.]]]).expand(poses.shape[0], -1, -1)], dim=1)
+        inv_trans = torch.cat([torch.cat([R, torch.as_tensor([[0.,0.,0.]]).T], dim=1), torch.as_tensor([[0.,0.,0.,1.]])], dim=0)
+        poses_norm = (inv_trans @ poses_homo)[:,:3]
+        pts = (inv_trans @ torch.cat([pts, torch.ones_like(pts[:,0:1])], dim=-1)[...,None])[:,:3,0]
 
-    # translation and scaling
-    poses_min, poses_max = poses[...,3].min(0)[0], poses[...,3].max(0)[0]
-    pts_fg = pts[(poses_min[0] < pts[:,0]) & (pts[:,0] < poses_max[0]) & (poses_min[1] < pts[:,1]) & (pts[:,1] < poses_max[1])]
-    center = get_center(pts_fg)
-    tc = center.reshape(3, 1)
-    t = -tc
-    poses_homo = torch.cat([poses, torch.as_tensor([[[0.,0.,0.,1.]]]).expand(poses.shape[0], -1, -1)], dim=1)
-    inv_trans = torch.cat([torch.cat([torch.eye(3), t], dim=1), torch.as_tensor([[0.,0.,0.,1.]])], dim=0)
-    poses = (inv_trans @ poses_homo)[:,:3]
-    scale = poses[...,3].norm(p=2, dim=-1).min()
-    poses[...,3] /= scale
-    pts = (inv_trans @ torch.cat([pts, torch.ones_like(pts[:,0:1])], dim=-1)[...,None])[:,:3,0]
-    pts = pts / scale
+        # translation and scaling
+        poses_min, poses_max = poses_norm[...,3].min(0)[0], poses_norm[...,3].max(0)[0]
+        pts_fg = pts[(poses_min[0] < pts[:,0]) & (pts[:,0] < poses_max[0]) & (poses_min[1] < pts[:,1]) & (pts[:,1] < poses_max[1])]
+        center = get_center(pts_fg)
+        tc = center.reshape(3, 1)
+        t = -tc
+        poses_homo = torch.cat([poses_norm, torch.as_tensor([[[0.,0.,0.,1.]]]).expand(poses_norm.shape[0], -1, -1)], dim=1)
+        inv_trans = torch.cat([torch.cat([torch.eye(3), t], dim=1), torch.as_tensor([[0.,0.,0.,1.]])], dim=0)
+        poses_norm = (inv_trans @ poses_homo)[:,:3]
+        scale = poses_norm[...,3].norm(p=2, dim=-1).min()
+        poses_norm[...,3] /= scale
+        pts = (inv_trans @ torch.cat([pts, torch.ones_like(pts[:,0:1])], dim=-1)[...,None])[:,:3,0]
+        pts = pts / scale
+    else:
+        # rotation and translation
+        Rc = torch.stack([x, y, z], dim=1)
+        tc = center.reshape(3, 1)
+        R, t = Rc.T, -Rc.T @ tc
+        poses_homo = torch.cat([poses, torch.as_tensor([[[0.,0.,0.,1.]]]).expand(poses.shape[0], -1, -1)], dim=1)
+        inv_trans = torch.cat([torch.cat([R, t], dim=1), torch.as_tensor([[0.,0.,0.,1.]])], dim=0)
+        poses_norm = (inv_trans @ poses_homo)[:,:3] # (N_images, 4, 4)
 
-    return poses, pts
+        # scaling
+        scale = poses_norm[...,3].norm(p=2, dim=-1).min()
+        poses_norm[...,3] /= scale
 
+        # apply the transformation to the point cloud
+        pts = (inv_trans @ torch.cat([pts, torch.ones_like(pts[:,0:1])], dim=-1)[...,None])[:,:3,0]
+        pts = pts / scale
+
+    return poses_norm, pts
 
 def create_spheric_poses(cameras, n_steps=120):
     center = torch.as_tensor([0.,0.,0.], dtype=cameras.dtype, device=cameras.device)
@@ -93,8 +128,6 @@ def create_spheric_poses(cameras, n_steps=120):
     all_c2w = torch.stack(all_c2w, dim=0)
     
     return all_c2w
-
-
 
 class ColmapDatasetBase():
     # the data only has to be processed once
@@ -120,7 +153,6 @@ class ColmapDatasetBase():
             else:
                 raise KeyError("Either img_wh or img_downscale should be specified.")
 
-            w, h = w, h
             img_wh = (w, h)
             factor = w / W
 
@@ -141,7 +173,8 @@ class ColmapDatasetBase():
             imdata = read_images_binary(os.path.join(self.config.root_dir, 'sparse/0/images.bin'))
 
             mask_dir = os.path.join(self.config.root_dir, 'masks')
-            use_mask = os.path.exists(mask_dir) and self.config.use_mask
+            has_mask = os.path.exists(mask_dir) # TODO: support partial masks
+            apply_mask = has_mask and self.config.apply_mask
             
             all_c2w, all_images, all_fg_masks = [], [], []
 
@@ -156,7 +189,8 @@ class ColmapDatasetBase():
                     img = Image.open(img_path)
                     img = img.resize(img_wh, Image.BICUBIC)
                     img = TF.to_tensor(img).permute(1, 2, 0)[...,:3]
-                    if use_mask:
+                    img = img.to(self.rank) if self.config.load_data_on_gpu else img.cpu()
+                    if has_mask:
                         mask_paths = [os.path.join(mask_dir, d.name), os.path.join(mask_dir, d.name[3:])]
                         mask_paths = list(filter(os.path.exists, mask_paths))
                         assert len(mask_paths) == 1
@@ -164,7 +198,7 @@ class ColmapDatasetBase():
                         mask = mask.resize(img_wh, Image.BICUBIC)
                         mask = TF.to_tensor(mask)[0]
                     else:
-                        mask = torch.ones_like(img[...,0])
+                        mask = torch.ones_like(img[...,0], device=img.device)
                     all_fg_masks.append(mask) # (h, w)
                     all_images.append(img)
             
@@ -172,15 +206,17 @@ class ColmapDatasetBase():
 
             pts3d = read_points3d_binary(os.path.join(self.config.root_dir, 'sparse/0/points3D.bin'))
             pts3d = torch.from_numpy(np.array([pts3d[k].xyz for k in pts3d])).float()
-            all_c2w, pts3d = normalize_poses(all_c2w, pts3d, estimate_ground=self.config.estimate_ground)
+            all_c2w, pts3d = normalize_poses(all_c2w, pts3d, up_est_method=self.config.up_est_method, center_est_method=self.config.center_est_method)
 
             ColmapDatasetBase.properties = {
                 'w': w,
                 'h': h,
                 'img_wh': img_wh,
                 'factor': factor,
-                'use_mask': use_mask,
+                'has_mask': has_mask,
+                'apply_mask': apply_mask,
                 'directions': directions,
+                'pts3d': pts3d,
                 'all_c2w': all_c2w,
                 'all_images': all_images,
                 'all_fg_masks': all_fg_masks
@@ -196,7 +232,7 @@ class ColmapDatasetBase():
             self.all_images = torch.zeros((self.config.n_test_traj_steps, self.h, self.w, 3), dtype=torch.float32)
             self.all_fg_masks = torch.zeros((self.config.n_test_traj_steps, self.h, self.w), dtype=torch.float32)
         else:
-            self.all_images, self.all_fg_masks = torch.stack(self.all_images, dim=0), torch.stack(self.all_fg_masks, dim=0)  
+            self.all_images, self.all_fg_masks = torch.stack(self.all_images, dim=0).float(), torch.stack(self.all_fg_masks, dim=0).float()
 
         """
         # for debug use
@@ -221,15 +257,15 @@ class ColmapDatasetBase():
         pts_out.append('\n'.join([' '.join([str(p) for p in l]) + ' 1.0 1.0 1.0' for l in ray_pts.view(-1, 3).tolist()]))
         
         open('cameras.txt', 'w').write('\n'.join(pts_out))
-        open('scene.txt', 'w').write('\n'.join([' '.join([str(p) for p in l]) + ' 0.0 0.0 0.0' for l in pts3d.view(-1, 3).tolist()]))
+        open('scene.txt', 'w').write('\n'.join([' '.join([str(p) for p in l]) + ' 0.0 0.0 0.0' for l in self.pts3d.view(-1, 3).tolist()]))
 
         exit(1)
         """
 
-        self.all_c2w, self.all_images, self.all_fg_masks = \
-            self.all_c2w.float().to(self.rank), \
-            self.all_images.float().to(self.rank), \
-            self.all_fg_masks.float().to(self.rank)
+        self.all_c2w = self.all_c2w.float().to(self.rank)
+        if self.config.load_data_on_gpu:
+            self.all_images = self.all_images.to(self.rank) 
+            self.all_fg_masks = self.all_fg_masks.to(self.rank)
         
 
 class ColmapDataset(Dataset, ColmapDatasetBase):
