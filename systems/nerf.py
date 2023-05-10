@@ -46,13 +46,23 @@ class NeRFSystem(BaseSystem):
             y = torch.randint(
                 0, self.dataset.h, size=(self.train_num_rays,), device=self.dataset.all_images.device
             )
-            directions = self.dataset.directions[y, x]
+
+            #if dataset name is evdata, then we have different direction vectors for each image
+            if self.dataset.config.name == 'evdata':
+                directions = self.dataset.all_directions[index, y, x]
+            else:
+                directions = self.dataset.directions[y, x]
             rays_o, rays_d = get_rays(directions, c2w)
             rgb = self.dataset.all_images[index, y, x].view(-1, self.dataset.all_images.shape[-1])
             fg_mask = self.dataset.all_fg_masks[index, y, x].view(-1)
         else:
+
+            if self.dataset.config.name == 'evdata':
+                directions = self.dataset.all_directions[index][0]
+            else:
+                directions = self.dataset.directions
+
             c2w = self.dataset.all_c2w[index][0]
-            directions = self.dataset.directions
             rays_o, rays_d = get_rays(directions, c2w)
             rgb = self.dataset.all_images[index].view(-1, self.dataset.all_images.shape[-1])
             fg_mask = self.dataset.all_fg_masks[index].view(-1)
@@ -69,7 +79,7 @@ class NeRFSystem(BaseSystem):
         else:
             self.model.background_color = torch.ones((3,), dtype=torch.float32, device=self.rank)
         
-        rgb = rgb * fg_mask[...,None] + self.model.background_color * (1 - fg_mask[...,None])        
+        rgb = rgb * fg_mask[...,None] + self.model.background_color * (1 - fg_mask[...,None])
         
         batch.update({
             'rays': rays,
@@ -193,17 +203,19 @@ class NeRFSystem(BaseSystem):
             psnr = torch.mean(torch.stack([o['psnr'] for o in out_set.values()]))
             self.log('test/psnr', psnr, prog_bar=True, rank_zero_only=True)    
 
-            self.save_img_sequence(
-                f"it{self.global_step}-test",
-                f"it{self.global_step}-test",
-                '(\d+)\.png',
-                save_format='mp4',
-                fps=30
-            )
+            # self.save_img_sequence(
+            #     f"it{self.global_step}-test",
+            #     f"it{self.global_step}-test",
+            #     '(\d+)\.png',
+            #     save_format='mp4',
+            #     fps=30
+            # )
             
             mesh = self.model.isosurface()
+
+            mesh['v_pos'] = mesh['v_pos'] * self.dataset.scene_scale_factor
             self.save_mesh(
-                f"it{self.global_step}-{self.config.model.geometry.isosurface.method}{self.config.model.geometry.isosurface.resolution}.obj",
+                f"it{self.global_step}-{self.config.model.geometry.isosurface.method}{self.config.model.geometry.isosurface.resolution}.ply",
                 mesh['v_pos'],
                 mesh['t_pos_idx'],
             )

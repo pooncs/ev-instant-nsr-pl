@@ -3,6 +3,7 @@ import json
 import math
 import numpy as np
 from PIL import Image
+import cv2
 
 import torch
 from torch.utils.data import Dataset, DataLoader, IterableDataset
@@ -13,6 +14,7 @@ import pytorch_lightning as pl
 import datasets
 from models.ray_utils import get_ray_directions
 from utils.misc import get_rank
+from datasets.utils import getROICornerPixels, maskImage
 
 
 class EVDatasetBase():
@@ -51,20 +53,23 @@ class EVDatasetBase():
 
         # ray directions for all pixels, same for all images (same H, W, focal)
         # self.directions = get_ray_directions(self.w, self.h, self.focal, self.focal, self.w//2, self.h//2, self.config.use_pixel_centers).to(self.rank) # (h, w, 3)           
-
+        aabb = meta['aabb']
+        Pw = np.array([[aabb[0][0],aabb[1][0],aabb[0][0],aabb[1][0]],[aabb[1][1],aabb[1][1],aabb[0][1],aabb[0][1]],[0,0,0,0],[1,1,1,1]])
+        
         self.scene_scale_factor = meta["aabb"][1][0] #we use xmax in aabb to downscale scene to unit cube [-1,1] 
 
         self.all_c2w, self.all_images, self.all_fg_masks, self.all_directions = [], [], [], []
         
         for i, frame in enumerate(meta['frames']):
-            c2w = torch.from_numpy(np.array(frame['transform_matrix'])[:3, :4])
+            c2w = torch.from_numpy(np.array(frame['transform_matrix']))
+            pts = getROICornerPixels(c2w, frame['fl_x'], frame['cx'], frame['cy'], w, Pw)
             c2w[0:3,3] /= self.scene_scale_factor # scale to unit cube
-            
-            self.all_c2w.append(c2w)
+            self.all_c2w.append(c2w[:3, :4])
 
-            img_path = os.path.join(self.config.root_dir, frame['file_path'][2:])
-            img = Image.open(img_path)
+            img_path = os.path.join(self.config.root_dir, frame['file_path'])
+            img = Image.open(img_path, )
             img = img.resize(self.img_wh, Image.BICUBIC)
+            img, _ = maskImage(np.array(img), pts)
             img = TF.to_tensor(img).permute(1, 2, 0) # (4, h, w) => (h, w, 4)
 
             direction = get_ray_directions(self.w, self.h, frame['fl_x'], frame['fl_y'], frame['cx'], frame['cy'], self.config.use_pixel_centers).to(self.rank) # (h, w, 3)

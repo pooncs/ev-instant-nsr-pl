@@ -85,7 +85,7 @@ class NeuSSystem(BaseSystem):
             'rays': rays,
             'rgb': rgb,
             'fg_mask': fg_mask
-        })      
+        })
     
     def training_step(self, batch, batch_idx):
         out = self(batch)
