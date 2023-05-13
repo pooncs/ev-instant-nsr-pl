@@ -105,6 +105,7 @@ def main():
         callbacks=callbacks,
         logger=loggers,
         strategy=strategy,
+        auto_scale_batch_size=True,
         **config.trainer
     )
 

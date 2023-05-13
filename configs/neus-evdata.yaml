@@ -12,6 +12,7 @@ dataset:
   # img_downscale: 1 # specify training image size by either img_wh or img_downscale
   near_plane: 2.0
   far_plane: 4.0
+  load_data_on_gpu: false
   spheric_poses: false
   use_pixel_centers: true
   train_split: 'train'

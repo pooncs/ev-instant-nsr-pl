@@ -22,7 +22,7 @@
 
 #------------------------------------------------------------------------------------
 scene="CTTBLO004_ROI_1v4_masked"
-exp_name="exp1_nerf_multi_20k"
+exp_name="exp1_nerf_10k"
 multi_roi="F"
 config="configs/nerf-evdata.yaml"
 root="/home/ubuntu/src"
@@ -32,7 +32,7 @@ gpu="0"
 if [ $multi_roi == 'T' ]; then
     for i in $(seq -w 0 3); do
         for j in $(seq -w 0 3); do
-            echo "$scene/sub_roi_$i$j"
+            echo "Training: $scene/sub_roi_$i$j"
             python launch.py    --config $config \
                                 --gpu $gpu \
                                 --train \
@@ -40,7 +40,8 @@ if [ $multi_roi == 'T' ]; then
                                 dataset.scene=$scene/sub_roi_$i$j \
                                 trainer.max_steps=$maxsteps \
                                 tag=$exp_name
-
+            
+            echo "Testing: $scene/sub_roi_$i$j"
             python launch.py    --config $root/data/$scene/exp/$exp_name*/config/parsed.yaml \
                                 --gpu $gpu \
                                 --test \

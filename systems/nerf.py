@@ -35,17 +35,13 @@ class NeRFSystem(BaseSystem):
             index = batch['index']
         else:
             if self.config.model.batch_image_sampling:
-                index = torch.randint(0, len(self.dataset.all_images), size=(self.train_num_rays,), device=self.dataset.all_images.device)
+                index = torch.randint(0, len(self.dataset.all_images), size=(self.train_num_rays,))
             else:
-                index = torch.randint(0, len(self.dataset.all_images), size=(1,), device=self.dataset.all_images.device)
+                index = torch.randint(0, len(self.dataset.all_images), size=(1,))
         if stage in ['train']:
             c2w = self.dataset.all_c2w[index]
-            x = torch.randint(
-                0, self.dataset.w, size=(self.train_num_rays,), device=self.dataset.all_images.device
-            )
-            y = torch.randint(
-                0, self.dataset.h, size=(self.train_num_rays,), device=self.dataset.all_images.device
-            )
+            x = torch.randint(0, self.dataset.w, size=(self.train_num_rays,))
+            y = torch.randint(0, self.dataset.h, size=(self.train_num_rays,))
 
             #if dataset name is evdata, then we have different direction vectors for each image
             if self.dataset.config.name == 'evdata':
@@ -53,19 +49,20 @@ class NeRFSystem(BaseSystem):
             else:
                 directions = self.dataset.directions[y, x]
             rays_o, rays_d = get_rays(directions, c2w)
-            rgb = self.dataset.all_images[index, y, x].view(-1, self.dataset.all_images.shape[-1])
-            fg_mask = self.dataset.all_fg_masks[index, y, x].view(-1)
+            rgb = self.dataset.all_images[index, y, x].view(-1, self.dataset.all_images.shape[-1]).to(dtype=torch.float32) / 255
+            fg_mask = self.dataset.all_fg_masks[index, y, x].view(-1).to(dtype=torch.float32) / 255
         else:
 
             if self.dataset.config.name == 'evdata':
                 directions = self.dataset.all_directions[index][0]
             else:
                 directions = self.dataset.directions
+            directions = directions.to(self.rank)
 
             c2w = self.dataset.all_c2w[index][0]
             rays_o, rays_d = get_rays(directions, c2w)
-            rgb = self.dataset.all_images[index].view(-1, self.dataset.all_images.shape[-1])
-            fg_mask = self.dataset.all_fg_masks[index].view(-1)
+            rgb = self.dataset.all_images[index].view(-1, self.dataset.all_images.shape[-1]).to(dtype=torch.float32) / 255
+            fg_mask = self.dataset.all_fg_masks[index].view(-1).to(dtype=torch.float32) / 255
         
         rays = torch.cat([rays_o, F.normalize(rays_d, p=2, dim=-1)], dim=-1)
 
@@ -79,6 +76,7 @@ class NeRFSystem(BaseSystem):
         else:
             self.model.background_color = torch.ones((3,), dtype=torch.float32, device=self.rank)
         
+        rays, rgb, fg_mask = rays.to(self.rank), rgb.to(self.rank), fg_mask.to(self.rank)
         rgb = rgb * fg_mask[...,None] + self.model.background_color * (1 - fg_mask[...,None])
         
         batch.update({

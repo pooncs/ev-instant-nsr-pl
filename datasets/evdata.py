@@ -3,7 +3,7 @@ import json
 import math
 import numpy as np
 from PIL import Image
-import cv2
+import imageio.v3 as imageio
 
 import torch
 from torch.utils.data import Dataset, DataLoader, IterableDataset
@@ -67,22 +67,26 @@ class EVDatasetBase():
             self.all_c2w.append(c2w[:3, :4])
 
             img_path = os.path.join(self.config.root_dir, frame['file_path'])
-            img = Image.open(img_path, )
-            img = img.resize(self.img_wh, Image.BICUBIC)
-            img, _ = maskImage(np.array(img), pts)
-            img = TF.to_tensor(img).permute(1, 2, 0) # (4, h, w) => (h, w, 4)
+            # img = Image.open(img_path)
+            # img = img.resize(self.img_wh, Image.BICUBIC)
+            # img, _ = maskImage(np.array(img), pts)
+            # img = TF.to_tensor(img).permute(1, 2, 0) # (4, h, w) => (h, w, 4)
+            # img = (img * 255).to(dtype=torch.uint8)
 
-            direction = get_ray_directions(self.w, self.h, frame['fl_x'], frame['fl_y'], frame['cx'], frame['cy'], self.config.use_pixel_centers).to(self.rank) # (h, w, 3)
+            img = imageio.imread(img_path, extension='.png')
+            #img, _ = maskImage(img, pts)
+            img = torch.tensor(img, dtype=torch.uint8)
+
+            direction = get_ray_directions(self.w, self.h, frame['fl_x'], frame['fl_y'], frame['cx'], frame['cy'], self.config.use_pixel_centers) # (h, w, 3)
             self.all_directions.append(direction)
 
-            self.all_fg_masks.append(img[..., -1]) # (h, w)
+            self.all_fg_masks.append(img[..., -1].to(dtype=torch.bool)) # (h, w)
             self.all_images.append(img[...,:3])
 
-        self.all_c2w, self.all_images, self.all_fg_masks, self.all_directions = \
-            torch.stack(self.all_c2w, dim=0).float().to(self.rank), \
-            torch.stack(self.all_images, dim=0).float().to(self.rank), \
-            torch.stack(self.all_fg_masks, dim=0).float().to(self.rank), \
-            torch.stack(self.all_directions, dim=0).float().to(self.rank)
+        self.all_c2w = torch.stack(self.all_c2w, dim=0).float()
+        self.all_images = torch.stack(self.all_images, dim=0)
+        self.all_fg_masks = torch.stack(self.all_fg_masks, dim=0)
+        self.all_directions = torch.stack(self.all_directions, dim=0).float()
         
 
 class EVDataset(Dataset, EVDatasetBase):
