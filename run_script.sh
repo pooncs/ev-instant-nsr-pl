@@ -26,7 +26,7 @@ exp_name="exp1_nerf_10k"
 multi_roi="F"
 config="configs/nerf-evdata.yaml"
 root="/home/ubuntu/src"
-maxsteps=10000
+maxsteps=5000
 gpu="0"
 
 if [ $multi_roi == 'T' ]; then

@@ -58,7 +58,7 @@ class EVDatasetBase():
         
         self.scene_scale_factor = meta["aabb"][1][0] #we use xmax in aabb to downscale scene to unit cube [-1,1] 
 
-        self.all_c2w, self.all_images, self.all_fg_masks, self.all_directions = [], [], [], []
+        self.all_c2w, self.all_images, self.all_fg_masks, self.all_K = [], [], [], []
         
         for i, frame in enumerate(meta['frames']):
             c2w = torch.from_numpy(np.array(frame['transform_matrix']))
@@ -74,19 +74,22 @@ class EVDatasetBase():
             # img = (img * 255).to(dtype=torch.uint8)
 
             img = imageio.imread(img_path, extension='.png')
-            #img, _ = maskImage(img, pts)
+            img, _ = maskImage(img, pts)
             img = torch.tensor(img, dtype=torch.uint8)
 
-            direction = get_ray_directions(self.w, self.h, frame['fl_x'], frame['fl_y'], frame['cx'], frame['cy'], self.config.use_pixel_centers) # (h, w, 3)
-            self.all_directions.append(direction)
-
+            #direction = get_ray_directions(self.w, self.h, frame['fl_x'], frame['fl_y'], frame['cx'], frame['cy'], self.config.use_pixel_centers) # (h, w, 3)
+            #self.all_directions.append(direction)
+            self.all_K.append(torch.tensor([frame['w'], frame['h'], frame['fl_x'], frame['fl_y'], frame['cx'], frame['cy']]))
+            
             self.all_fg_masks.append(img[..., -1].to(dtype=torch.bool)) # (h, w)
             self.all_images.append(img[...,:3])
+            print(f'Loaded Image: {i}')
 
         self.all_c2w = torch.stack(self.all_c2w, dim=0).float()
         self.all_images = torch.stack(self.all_images, dim=0)
         self.all_fg_masks = torch.stack(self.all_fg_masks, dim=0)
-        self.all_directions = torch.stack(self.all_directions, dim=0).float()
+        self.all_K = torch.stack(self.all_K, dim=0).float()
+        #self.all_directions = torch.stack(self.all_directions, dim=0).float().to(device=self.rank)
         
 
 class EVDataset(Dataset, EVDatasetBase):

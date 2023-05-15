@@ -7,7 +7,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.utilities.rank_zero import rank_zero_info, rank_zero_debug
 
 import models
-from models.ray_utils import get_rays
+from models.ray_utils import get_rays, get_ray_directions
 import systems
 from systems.base import BaseSystem
 from systems.criterions import PSNR
@@ -45,19 +45,22 @@ class NeRFSystem(BaseSystem):
 
             #if dataset name is evdata, then we have different direction vectors for each image
             if self.dataset.config.name == 'evdata':
-                directions = self.dataset.all_directions[index, y, x]
+                K = self.dataset.all_K[index]
+                directions = get_ray_directions(i=x, j=y, fx=K[:, 2], fy=K[:, 3], cx=K[:, 4], cy=K[:, 5])
+                # directions = self.dataset.all_directions[index, y, x]
             else:
                 directions = self.dataset.directions[y, x]
             rays_o, rays_d = get_rays(directions, c2w)
             rgb = self.dataset.all_images[index, y, x].view(-1, self.dataset.all_images.shape[-1]).to(dtype=torch.float32) / 255
             fg_mask = self.dataset.all_fg_masks[index, y, x].view(-1).to(dtype=torch.float32) / 255
         else:
-
+            index = index.cpu()
             if self.dataset.config.name == 'evdata':
-                directions = self.dataset.all_directions[index][0]
+                #directions = self.dataset.all_directions[index][0]
+                K = self.dataset.all_K[index][0]
+                directions = get_ray_directions(i=K[0], j=K[1], fx=K[2], fy=K[3], cx=K[4], cy=K[5], test=True)
             else:
                 directions = self.dataset.directions
-            directions = directions.to(self.rank)
 
             c2w = self.dataset.all_c2w[index][0]
             rays_o, rays_d = get_rays(directions, c2w)
