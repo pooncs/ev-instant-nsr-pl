@@ -89,6 +89,8 @@ class EVDatasetBase():
         self.all_images = torch.stack(self.all_images, dim=0)
         self.all_fg_masks = torch.stack(self.all_fg_masks, dim=0)
         self.all_K = torch.stack(self.all_K, dim=0).float()
+        # pose_method = self.config.cam_opt_method if split == 'train' else 'off'
+        # self.cam_opt = CameraOptimizer(self.all_c2w.shape[0], self.all_c2w.device, pose_method)
         #self.all_directions = torch.stack(self.all_directions, dim=0).float().to(device=self.rank)
         
 
@@ -118,6 +120,8 @@ class EVIterableDataset(IterableDataset, EVDatasetBase):
 class EVDataModule(pl.LightningDataModule):
     def __init__(self, config):
         super().__init__()
+        with open(os.path.join(config.root_dir, f"transforms_train.json"), 'r') as f:
+            self.num_cameras = len(json.load(f)['frames'])
         self.config = config
     
     def setup(self, stage=None):

@@ -8,6 +8,7 @@ from pytorch_lightning.utilities.rank_zero import rank_zero_info, rank_zero_debu
 
 import models
 from models.ray_utils import get_rays, get_ray_directions
+from models.pose_optimization import multiply
 import systems
 from systems.base import BaseSystem
 from systems.criterions import PSNR
@@ -39,20 +40,24 @@ class NeRFSystem(BaseSystem):
             else:
                 index = torch.randint(0, len(self.dataset.all_images), size=(1,))
         if stage in ['train']:
-            c2w = self.dataset.all_c2w[index]
+            c2w = self.dataset.all_c2w[index].to(self.rank)
+            c2w = multiply(c2w, self.model.pose_refine(index).to(self.rank))
             x = torch.randint(0, self.dataset.w, size=(self.train_num_rays,))
             y = torch.randint(0, self.dataset.h, size=(self.train_num_rays,))
+            rgb = self.dataset.all_images[index, y, x].view(-1, self.dataset.all_images.shape[-1]).to(dtype=torch.float32) / 255
+            fg_mask = self.dataset.all_fg_masks[index, y, x].view(-1).to(dtype=torch.float32) / 255
+            x = x.to(self.rank)
+            y = y.to(self.rank)
 
             #if dataset name is evdata, then we have different direction vectors for each image
             if self.dataset.config.name == 'evdata':
-                K = self.dataset.all_K[index]
+                K = self.dataset.all_K[index].to(self.rank)
                 directions = get_ray_directions(i=x, j=y, fx=K[:, 2], fy=K[:, 3], cx=K[:, 4], cy=K[:, 5])
                 # directions = self.dataset.all_directions[index, y, x]
             else:
                 directions = self.dataset.directions[y, x]
             rays_o, rays_d = get_rays(directions, c2w)
-            rgb = self.dataset.all_images[index, y, x].view(-1, self.dataset.all_images.shape[-1]).to(dtype=torch.float32) / 255
-            fg_mask = self.dataset.all_fg_masks[index, y, x].view(-1).to(dtype=torch.float32) / 255
+            
         else:
             index = index.cpu()
             if self.dataset.config.name == 'evdata':

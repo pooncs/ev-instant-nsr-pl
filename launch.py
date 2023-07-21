@@ -65,6 +65,7 @@ def main():
     pl.seed_everything(config.seed)
 
     dm = datasets.make(config.dataset.name, config.dataset)
+    config.model.pose_refine.num_cameras = dm.num_cameras
     system = systems.make(config.system.name, config, load_from_checkpoint=None if not args.resume_weights_only else args.resume)
 
     callbacks = []

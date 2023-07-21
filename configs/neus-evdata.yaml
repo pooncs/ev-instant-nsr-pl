@@ -18,7 +18,8 @@ dataset:
   train_split: 'train'
   val_split: 'val'
   test_split: 'test'
-
+  cam_opt_method: 'SO3xR3'
+  
 model:
   name: neus
   radius: 1

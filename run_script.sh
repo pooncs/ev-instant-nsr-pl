@@ -21,12 +21,12 @@
 #                     --resume /home/ubuntu/src/data/SCZRIC001_ROI_3_0_25_masked/exp/test12_high@20230404-183637/ckpt/epoch=0-step=20000.ckpt
 
 #------------------------------------------------------------------------------------
-scene="CTTBLO004_ROI_1v4_masked"
+scene="CTTBLO004_ROI_1_RSC_DS4_masked"
 exp_name="exp1_nerf_10k"
 multi_roi="F"
 config="configs/nerf-evdata.yaml"
 root="/home/ubuntu/src"
-maxsteps=5000
+maxsteps=10000
 gpu="0"
 
 if [ $multi_roi == 'T' ]; then
