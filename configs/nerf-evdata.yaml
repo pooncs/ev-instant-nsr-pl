@@ -24,12 +24,12 @@ model:
   radius: 1
   num_samples_per_ray: 1024
   train_num_rays: 256
-  max_train_num_rays: 32768
+  max_train_num_rays: 65536
   grid_prune: true
   dynamic_ray_sampling: true
   batch_image_sampling: true
   randomized: true
-  ray_chunk: 32768
+  ray_chunk: 65536
   learned_background: false
   background_color: random
   geometry:
