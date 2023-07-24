@@ -45,7 +45,7 @@ class NeRFSystem(BaseSystem):
             x = torch.randint(0, self.dataset.w, size=(self.train_num_rays,))
             y = torch.randint(0, self.dataset.h, size=(self.train_num_rays,))
             rgb = self.dataset.all_images[index, y, x].view(-1, self.dataset.all_images.shape[-1]).to(dtype=torch.float32) / 255
-            fg_mask = self.dataset.all_fg_masks[index, y, x].view(-1).to(dtype=torch.float32) / 255
+            fg_mask = self.dataset.all_fg_masks[index, y, x].view(-1).to(dtype=torch.float32)
             x = x.to(self.rank)
             y = y.to(self.rank)
 
@@ -70,7 +70,7 @@ class NeRFSystem(BaseSystem):
             c2w = self.dataset.all_c2w[index][0]
             rays_o, rays_d = get_rays(directions, c2w)
             rgb = self.dataset.all_images[index].view(-1, self.dataset.all_images.shape[-1]).to(dtype=torch.float32) / 255
-            fg_mask = self.dataset.all_fg_masks[index].view(-1).to(dtype=torch.float32) / 255
+            fg_mask = self.dataset.all_fg_masks[index].view(-1).to(dtype=torch.float32)
         
         rays = torch.cat([rays_o, F.normalize(rays_d, p=2, dim=-1)], dim=-1)
 

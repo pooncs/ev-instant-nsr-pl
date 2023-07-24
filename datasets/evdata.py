@@ -4,6 +4,7 @@ import math
 import numpy as np
 from PIL import Image
 import imageio.v3 as imageio
+from tqdm import tqdm
 
 import torch
 from torch.utils.data import Dataset, DataLoader, IterableDataset
@@ -60,7 +61,7 @@ class EVDatasetBase():
 
         self.all_c2w, self.all_images, self.all_fg_masks, self.all_K = [], [], [], []
         
-        for i, frame in enumerate(meta['frames']):
+        for frame in tqdm(meta['frames']):
             c2w = torch.from_numpy(np.array(frame['transform_matrix']))
             pts = getROICornerPixels(c2w, frame['fl_x'], frame['cx'], frame['cy'], w, Pw)
             c2w[0:3,3] /= self.scene_scale_factor # scale to unit cube
@@ -83,14 +84,11 @@ class EVDatasetBase():
             
             self.all_fg_masks.append(img[..., -1].to(dtype=torch.bool)) # (h, w)
             self.all_images.append(img[...,:3])
-            print(f'Loaded Image: {i}')
 
         self.all_c2w = torch.stack(self.all_c2w, dim=0).float()
         self.all_images = torch.stack(self.all_images, dim=0)
         self.all_fg_masks = torch.stack(self.all_fg_masks, dim=0)
         self.all_K = torch.stack(self.all_K, dim=0).float()
-        # pose_method = self.config.cam_opt_method if split == 'train' else 'off'
-        # self.cam_opt = CameraOptimizer(self.all_c2w.shape[0], self.all_c2w.device, pose_method)
         #self.all_directions = torch.stack(self.all_directions, dim=0).float().to(device=self.rank)
         
 
