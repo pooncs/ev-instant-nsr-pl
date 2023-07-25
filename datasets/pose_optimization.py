@@ -2,10 +2,9 @@
 
 import torch
 import functools
-from typing import Literal, Type, Union, Tuple
+from typing import Tuple
 from typing_extensions import assert_never
 import numpy as np
-import models
 _EPS = np.finfo(float).eps * 4.0
 
 """
@@ -191,22 +190,22 @@ def normalize_with_norm(x: torch.Tensor, dim: int) -> Tuple[torch.Tensor, torch.
 """
 Pose and Intrinsics Optimizers
 """
-@models.register('pose_refine')
 class CameraOptimizer(torch.nn.Module):
     """Layer that modifies camera poses to be optimized as well as the field during training."""
 
-    def __init__(self, config):
+    def __init__(self, mode, num_cameras, device):
         super().__init__()
-        self.num_cameras = config.num_cameras
-        self.mode = config.mode
-        self.position_noise_std = config.position_noise_std
-        self.orientation_noise_std = config.orientation_noise_std
+        self.num_cameras = num_cameras
+        self.mode = mode['mode']
+        self.position_noise_std = 0.0
+        self.orientation_noise_std = 0.0
+        self.rank = device
 
         # Initialize learnable parameters.
         if self.mode == "none":
             pass
         elif self.mode in ("SO3xR3", "SE3"):
-            self.pose_adjustment = torch.nn.Parameter(torch.zeros((self.num_cameras, 6)))
+            self.pose_adjustment = torch.nn.Parameter(torch.zeros((self.num_cameras, 6), device=self.rank))
         else:
             assert_never(self.mode)
 
@@ -214,8 +213,8 @@ class CameraOptimizer(torch.nn.Module):
         if self.position_noise_std != 0.0 or self.orientation_noise_std != 0.0:
             assert self.position_noise_std >= 0.0 and self.orientation_noise_std >= 0.0
             std_vector = torch.tensor(
-                [self.position_noise_std] * 3 + [self.orientation_noise_std] * 3)
-            self.pose_noise = exp_map_SE3(torch.normal(torch.zeros((self.num_cameras, 6)), std_vector))
+                [self.position_noise_std] * 3 + [self.orientation_noise_std] * 3, device=self.rank)
+            self.pose_noise = exp_map_SE3(torch.normal(torch.zeros((self.num_cameras, 6), device=self.rank), std_vector))
         else:
             self.pose_noise = None
 
@@ -234,7 +233,7 @@ class CameraOptimizer(torch.nn.Module):
 
         # Apply learned transformation delta.
         if self.mode == "none":
-            outputs.append(torch.eye(4)[None, :3, :4].tile(indices.shape[0], 1, 1))
+            outputs.append(torch.eye(4, device=self.rank)[None, :3, :4].tile(indices.shape[0], 1, 1))
         elif self.mode == "SO3xR3":
             outputs.append(exp_map_SO3xR3(self.pose_adjustment[indices, :]))
         elif self.mode == "SE3":
@@ -249,5 +248,5 @@ class CameraOptimizer(torch.nn.Module):
         # Return: identity if no transforms are needed, otherwise multiply transforms together.
         if len(outputs) == 0:
             # Note that using repeat() instead of tile() here would result in unnecessary copies.
-            return torch.eye(4)[None, :3, :4].tile(indices.shape[0], 1, 1)
+            return torch.eye(4, device=self.rank)[None, :3, :4].tile(indices.shape[0], 1, 1)
         return functools.reduce(multiply, outputs)

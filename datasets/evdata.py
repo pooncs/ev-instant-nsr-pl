@@ -16,10 +16,11 @@ import datasets
 from models.ray_utils import get_ray_directions
 from utils.misc import get_rank
 from datasets.utils import getROICornerPixels, maskImage
+from datasets.pose_optimization import CameraOptimizer
 
 
 class EVDatasetBase():
-    def setup(self, config, split):
+    def setup(self, config, split, pose_refine: CameraOptimizer=None):
         self.config = config
         self.split = split
         self.rank = get_rank()
@@ -85,16 +86,25 @@ class EVDatasetBase():
             self.all_fg_masks.append(img[..., -1].to(dtype=torch.bool)) # (h, w)
             self.all_images.append(img[...,:3])
 
-        self.all_c2w = torch.stack(self.all_c2w, dim=0).float()
         self.all_images = torch.stack(self.all_images, dim=0)
         self.all_fg_masks = torch.stack(self.all_fg_masks, dim=0)
+        
+        self.all_c2w = torch.stack(self.all_c2w, dim=0).float()
         self.all_K = torch.stack(self.all_K, dim=0).float()
+
+        if split == 'train':
+            self.all_c2w = self.all_c2w.to(device=self.rank)
+            self.all_K = self.all_K.to(device=self.rank)
+            self.pose_refine = CameraOptimizer(self.config.pose_refine, self.all_c2w.shape[0], self.rank)
+        else:
+            self.pose_refine = pose_refine
+
         #self.all_directions = torch.stack(self.all_directions, dim=0).float().to(device=self.rank)
         
 
 class EVDataset(Dataset, EVDatasetBase):
-    def __init__(self, config, split):
-        self.setup(config, split)
+    def __init__(self, config, split, pose_refine):
+        self.setup(config, split, pose_refine)
 
     def __len__(self):
         return len(self.all_images)
@@ -106,8 +116,8 @@ class EVDataset(Dataset, EVDatasetBase):
 
 
 class EVIterableDataset(IterableDataset, EVDatasetBase):
-    def __init__(self, config, split):
-        self.setup(config, split)
+    def __init__(self, config, split, pose_refine):
+        self.setup(config, split, pose_refine)
 
     def __iter__(self):
         while True:
@@ -124,13 +134,13 @@ class EVDataModule(pl.LightningDataModule):
     
     def setup(self, stage=None):
         if stage in [None, 'fit']:
-            self.train_dataset = EVIterableDataset(self.config, self.config.train_split)
+            self.train_dataset = EVIterableDataset(self.config, self.config.train_split, None)
         if stage in [None, 'fit', 'validate']:
-            self.val_dataset = EVDataset(self.config, self.config.val_split)
+            self.val_dataset = EVDataset(self.config, self.config.val_split, self.train_dataset.pose_refine)
         if stage in [None, 'test']:
-            self.test_dataset = EVDataset(self.config, self.config.test_split)
+            self.test_dataset = EVDataset(self.config, self.config.test_split, self.train_dataset.pose_refine)
         if stage in [None, 'predict']:
-            self.predict_dataset = EVDataset(self.config, self.config.train_split)
+            self.predict_dataset = EVDataset(self.config, self.config.train_split, self.train_dataset.pose_refine)
 
     def prepare_data(self):
         pass

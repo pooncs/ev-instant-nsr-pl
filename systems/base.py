@@ -1,6 +1,7 @@
 import pytorch_lightning as pl
 
 import models
+import datasets
 from systems.utils import parse_optimizer, parse_scheduler, update_module_step
 from utils.mixins import SaverMixin
 from utils.misc import config_to_primitive, get_rank
@@ -17,6 +18,7 @@ class BaseSystem(pl.LightningModule, SaverMixin):
         self.config = config
         self.rank = get_rank()
         self.prepare()
+        self.dm = datasets.make(config.dataset.name, config.dataset)
         self.model = models.make(self.config.model.name, self.config.model)
     
     def prepare(self):
@@ -113,13 +115,22 @@ class BaseSystem(pl.LightningModule, SaverMixin):
         raise NotImplementedError
 
     def configure_optimizers(self):
-        optim = parse_optimizer(self.config.system.optimizer, self.model)
-        ret = {
-            'optimizer': optim,
-        }
-        if 'scheduler' in self.config.system:
-            ret.update({
-                'lr_scheduler': parse_scheduler(self.config.system.scheduler, optim),
-            })
+        ret = []
+        optim_nerf = parse_optimizer(self.config.system.optimizer.nerf, self.model)
+        sched_nerf = parse_scheduler(self.config.system.scheduler.nerf, optim_nerf)
+        ret.append({"optimizer": optim_nerf, "lr_scheduler": sched_nerf})
+        if self.config.dataset.pose_refine['mode'] != "none":
+            optim_pose = parse_optimizer(self.config.system.optimizer.pose, self.dm.train_dataset.pose_refine)
+            sched_pose = parse_scheduler(self.config.system.scheduler.pose, optim_pose)
+            ret.append({"optimizer": optim_pose, "lr_scheduler": sched_pose})
+
+        # ret = {
+        #     'optimizer': optim,
+        # }
+
+        # if 'scheduler' in self.config.system:
+        #     ret.update({
+        #         'lr_scheduler': parse_scheduler(self.config.system.scheduler, optim),
+        #     })
         return ret
 

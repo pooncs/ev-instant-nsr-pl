@@ -15,7 +15,7 @@ class NeRFModel(BaseModel):
     def setup(self):
         self.geometry = models.make(self.config.geometry.name, self.config.geometry)
         self.texture = models.make(self.config.texture.name, self.config.texture)
-        self.pose_refine = models.make(self.config.pose_refine.name, self.config.pose_refine)
+        # self.pose_refine = models.make(self.config.pose_refine.name, self.config.pose_refine)
         self.register_buffer('scene_aabb', torch.as_tensor([-self.config.radius, -self.config.radius, -self.config.radius, self.config.radius, self.config.radius, self.config.radius], dtype=torch.float32))
 
         if self.config.learned_background:

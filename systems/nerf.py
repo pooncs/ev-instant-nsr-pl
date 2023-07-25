@@ -8,7 +8,7 @@ from pytorch_lightning.utilities.rank_zero import rank_zero_info, rank_zero_debu
 
 import models
 from models.ray_utils import get_rays, get_ray_directions
-from models.pose_optimization import multiply
+from datasets.pose_optimization import multiply
 import systems
 from systems.base import BaseSystem
 from systems.criterions import PSNR
@@ -27,6 +27,7 @@ class NeRFSystem(BaseSystem):
         }
         self.train_num_samples = self.config.model.train_num_rays * self.config.model.num_samples_per_ray
         self.train_num_rays = self.config.model.train_num_rays
+        self.automatic_optimization = False
 
     def forward(self, batch):
         return self.model(batch['rays'])
@@ -39,19 +40,18 @@ class NeRFSystem(BaseSystem):
                 index = torch.randint(0, len(self.dataset.all_images), size=(self.train_num_rays,))
             else:
                 index = torch.randint(0, len(self.dataset.all_images), size=(1,))
-        if stage in ['train']:
-            c2w = self.dataset.all_c2w[index].to(self.rank)
-            c2w = multiply(c2w, self.model.pose_refine(index).to(self.rank))
+        if stage in ['train']:  
             x = torch.randint(0, self.dataset.w, size=(self.train_num_rays,))
             y = torch.randint(0, self.dataset.h, size=(self.train_num_rays,))
             rgb = self.dataset.all_images[index, y, x].view(-1, self.dataset.all_images.shape[-1]).to(dtype=torch.float32) / 255
             fg_mask = self.dataset.all_fg_masks[index, y, x].view(-1).to(dtype=torch.float32)
-            x = x.to(self.rank)
-            y = y.to(self.rank)
-
+            x, y, index = x.to(self.rank), y.to(self.rank), index.to(self.rank)
+            c2w = self.dataset.all_c2w[index]
+            
             #if dataset name is evdata, then we have different direction vectors for each image
             if self.dataset.config.name == 'evdata':
-                K = self.dataset.all_K[index].to(self.rank)
+                c2w = multiply(c2w, self.dataset.pose_refine(index))
+                K = self.dataset.all_K[index]
                 directions = get_ray_directions(i=x, j=y, fx=K[:, 2], fy=K[:, 3], cx=K[:, 4], cy=K[:, 5])
                 # directions = self.dataset.all_directions[index, y, x]
             else:
@@ -60,14 +60,15 @@ class NeRFSystem(BaseSystem):
             
         else:
             index = index.cpu()
+            c2w = self.dataset.all_c2w[index][0]
             if self.dataset.config.name == 'evdata':
                 #directions = self.dataset.all_directions[index][0]
+                c2w = multiply(c2w, self.dataset.pose_refine(index.to(self.rank)).detach().cpu())
                 K = self.dataset.all_K[index][0]
                 directions = get_ray_directions(i=K[0], j=K[1], fx=K[2], fy=K[3], cx=K[4], cy=K[5], test=True)
             else:
                 directions = self.dataset.directions
 
-            c2w = self.dataset.all_c2w[index][0]
             rays_o, rays_d = get_rays(directions, c2w)
             rgb = self.dataset.all_images[index].view(-1, self.dataset.all_images.shape[-1]).to(dtype=torch.float32) / 255
             fg_mask = self.dataset.all_fg_masks[index].view(-1).to(dtype=torch.float32)
@@ -95,7 +96,6 @@ class NeRFSystem(BaseSystem):
     
     def training_step(self, batch, batch_idx):
         out = self(batch)
-
         loss = 0.
 
         # update train_num_rays
@@ -119,12 +119,33 @@ class NeRFSystem(BaseSystem):
             self.log(f'train/loss_{name}', value)
             loss_ = value * self.C(self.config.system.loss[f"lambda_{name}"])
             loss += loss_
+        
+        # Backward call and step optimizers
+        if isinstance(self.optimizers, list):
+            [opt.zero_grad() for opt in self.optimizers()]
+            self.manual_backward(loss)
+            [opt.step() for opt in self.optimizers()]
+        else:
+            self.optimizers().zero_grad()
+            self.manual_backward(loss)
+            self.optimizers().step()
+        # opt_nerf = self.optimizers()[0]
+        # opt_pose = self.optimizers()[1]
+        # opt_nerf.zero_grad()
+        # opt_pose.zero_grad()
+        # self.manual_backward(loss)
+
+        # opt_nerf.step()
+        # opt_pose.step()
 
         for name, value in self.config.system.loss.items():
             if name.startswith('lambda'):
                 self.log(f'train_params/{name}', self.C(value))
         
         self.log('train/num_rays', float(self.train_num_rays), prog_bar=True)
+        self.log('loss', loss.detach(), prog_bar=True)
+        psnr = -10 * torch.log10(torch.mean(loss.detach()))
+        self.log('psnr', psnr, prog_bar=True)
 
         return {
             'loss': loss

@@ -34,7 +34,6 @@ def main():
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
     n_gpus = len(args.gpu.split(','))
 
-    import datasets
     import systems
     import pytorch_lightning as pl
     from pytorch_lightning import Trainer
@@ -64,8 +63,7 @@ def main():
         config.seed = int(time.time() * 1000) % 1000
     pl.seed_everything(config.seed)
 
-    dm = datasets.make(config.dataset.name, config.dataset)
-    config.model.pose_refine.num_cameras = dm.num_cameras
+    # dm = datasets.make(config.dataset.name, config.dataset)
     system = systems.make(config.system.name, config, load_from_checkpoint=None if not args.resume_weights_only else args.resume)
 
     callbacks = []
@@ -112,16 +110,16 @@ def main():
 
     if args.train:
         if args.resume and not args.resume_weights_only:
-            trainer.fit(system, datamodule=dm, ckpt_path=args.resume)
+            trainer.fit(system, datamodule=system.dm, ckpt_path=args.resume)
         else:
-            trainer.fit(system, datamodule=dm)
-        trainer.test(system, datamodule=dm)
+            trainer.fit(system, datamodule=system.dm)
+        trainer.test(system, datamodule=system.dm)
     elif args.validate:
-        trainer.validate(system, datamodule=dm, ckpt_path=args.resume)
+        trainer.validate(system, datamodule=system.dm, ckpt_path=args.resume)
     elif args.test:
-        trainer.test(system, datamodule=dm, ckpt_path=args.resume)
+        trainer.test(system, datamodule=system.dm, ckpt_path=args.resume)
     elif args.predict:
-        trainer.predict(system, datamodule=dm, ckpt_path=args.resume)
+        trainer.predict(system, datamodule=system.dm, ckpt_path=args.resume)
 
 
 if __name__ == '__main__':
