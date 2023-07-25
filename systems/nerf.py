@@ -121,7 +121,7 @@ class NeRFSystem(BaseSystem):
             loss += loss_
         
         # Backward call and step optimizers
-        if isinstance(self.optimizers, list):
+        if len(self.config.system.optimizer) > 1:
             [opt.zero_grad() for opt in self.optimizers()]
             self.manual_backward(loss)
             [opt.step() for opt in self.optimizers()]
@@ -129,14 +129,6 @@ class NeRFSystem(BaseSystem):
             self.optimizers().zero_grad()
             self.manual_backward(loss)
             self.optimizers().step()
-        # opt_nerf = self.optimizers()[0]
-        # opt_pose = self.optimizers()[1]
-        # opt_nerf.zero_grad()
-        # opt_pose.zero_grad()
-        # self.manual_backward(loss)
-
-        # opt_nerf.step()
-        # opt_pose.step()
 
         for name, value in self.config.system.loss.items():
             if name.startswith('lambda'):
